@@ -7,6 +7,7 @@ A lightweight static website for anonymously reporting when U.S. service members
 - Anonymous submission form with no personal identifier fields
 - Required installation/location label plus required country input for automatic map plotting
 - Regional heat map visualization using Leaflet and `leaflet.heat`
+- Installation labels represented in regional map popups so each entered label is logged on the map view
 - Installation and country entry with open-API geocoding before map plotting
 - Adjustable X-Y time-series chart for report volume over time
 - Compiled recent reports table showing raw submitted data

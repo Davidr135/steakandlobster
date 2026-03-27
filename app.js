@@ -37,6 +37,7 @@ let heatLayer = L.heatLayer([], {
 }).addTo(map);
 
 const chartSvg = document.getElementById("reportChart");
+const regionLabelLayer = L.layerGroup().addTo(map);
 
 const demoReports = [
   ["Fort Bragg", "United States", 35.1414, -79.007, 4],
@@ -121,18 +122,47 @@ function filterByTimeframe(reports, timeframeValue) {
   return reports.filter((report) => new Date(`${report.servedOn}T00:00:00`) >= cutoff);
 }
 
-function aggregateHeatPoints(reports) {
+function buildRegionalBuckets(reports) {
   const buckets = new Map();
   reports.forEach((report) => {
     const latBucket = Math.round(report.latitude * 2) / 2;
     const lngBucket = Math.round(report.longitude * 2) / 2;
     const key = `${latBucket},${lngBucket}`;
-    const current = buckets.get(key) ?? { lat: latBucket, lng: lngBucket, intensity: 0 };
+    const current =
+      buckets.get(key) ?? {
+        lat: latBucket,
+        lng: lngBucket,
+        intensity: 0,
+        reportCount: 0,
+        installations: new Map(),
+      };
+
     current.intensity += 1;
+    current.reportCount += 1;
+    const installationKey = report.locationName;
+    current.installations.set(installationKey, (current.installations.get(installationKey) ?? 0) + 1);
     buckets.set(key, current);
   });
 
-  return Array.from(buckets.values()).map(({ lat, lng, intensity }) => [lat, lng, Math.min(1, intensity / 6 + 0.15)]);
+  return Array.from(buckets.values());
+}
+
+function aggregateHeatPoints(regionalBuckets) {
+  return regionalBuckets.map(({ lat, lng, intensity }) => [lat, lng, Math.min(1, intensity / 6 + 0.15)]);
+}
+
+function buildRegionPopup(bucket) {
+  const lines = Array.from(bucket.installations.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([installation, count]) => `<li>${escapeHtml(installation)}: ${count}</li>`)
+    .join("");
+
+  return `
+    <div>
+      <strong>Regional reports: ${bucket.reportCount}</strong>
+      <ul>${lines}</ul>
+    </div>
+  `;
 }
 
 function renderTable(reports) {
@@ -280,8 +310,24 @@ function formatAxisLabel(dateString) {
 }
 
 function renderMap(reports) {
-  const points = aggregateHeatPoints(reports);
+  const regionalBuckets = buildRegionalBuckets(reports);
+  const points = aggregateHeatPoints(regionalBuckets);
   heatLayer.setLatLngs(points);
+
+  regionLabelLayer.clearLayers();
+  regionalBuckets.forEach((bucket) => {
+    L.circleMarker([bucket.lat, bucket.lng], {
+      radius: 7,
+      color: "#38bdf8",
+      weight: 1,
+      fillColor: "#38bdf8",
+      fillOpacity: 0.2,
+      opacity: 0.65,
+    })
+      .bindPopup(buildRegionPopup(bucket))
+      .addTo(regionLabelLayer);
+  });
+
   if (points.length) {
     const bounds = L.latLngBounds(points.map(([lat, lng]) => [lat, lng]));
     map.fitBounds(bounds.pad(0.35));
