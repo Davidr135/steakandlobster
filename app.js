@@ -1,6 +1,7 @@
 const STORAGE_KEY = "steak-lobster-reports";
 const GEOCODE_CACHE_KEY = "steak-lobster-geocode-cache";
-const GEOCODE_ENDPOINT = "https://nominatim.openstreetmap.org/search";
+const GOOGLE_API_KEY_STORAGE = "steak-lobster-google-api-key";
+const GOOGLE_GEOCODE_ENDPOINT = "https://maps.googleapis.com/maps/api/geocode/json";
 
 const form = document.getElementById("reportForm");
 const tbody = document.getElementById("reportRows");
@@ -10,8 +11,21 @@ const activeWindowReportsEl = document.getElementById("activeWindowReports");
 const seedDemoButton = document.getElementById("seedDemoData");
 const clearDataButton = document.getElementById("clearData");
 const servedOnInput = document.getElementById("servedOn");
+const googleApiKeyInput = document.getElementById("googleApiKey");
 const submitButton = form.querySelector('button[type="submit"]');
 servedOnInput.valueAsDate = new Date();
+
+const savedGoogleKey = localStorage.getItem(GOOGLE_API_KEY_STORAGE);
+if (savedGoogleKey) {
+  googleApiKeyInput.value = savedGoogleKey;
+}
+
+googleApiKeyInput.addEventListener("change", () => {
+  const cleaned = googleApiKeyInput.value.trim();
+  if (cleaned) {
+    localStorage.setItem(GOOGLE_API_KEY_STORAGE, cleaned);
+  }
+});
 
 const map = L.map("map", {
   zoomControl: true,
@@ -346,7 +360,7 @@ function renderDashboard() {
   renderTable(allReports);
 }
 
-async function geocodeLocation(locationName, country) {
+async function geocodeLocation(locationName, country, apiKey) {
   const cacheKey = `${locationName.toLowerCase()}|${country.toLowerCase()}`;
   const cache = loadGeocodeCache();
   if (cache[cacheKey]) {
@@ -354,30 +368,33 @@ async function geocodeLocation(locationName, country) {
   }
 
   const params = new URLSearchParams({
-    q: `${locationName}, ${country}`,
-    format: "jsonv2",
-    limit: "1",
+    address: `${locationName}, ${country}`,
+    key: apiKey,
   });
 
-  const response = await fetch(`${GEOCODE_ENDPOINT}?${params.toString()}`, {
+  const response = await fetch(`${GOOGLE_GEOCODE_ENDPOINT}?${params.toString()}`, {
     headers: {
       Accept: "application/json",
     },
   });
 
   if (!response.ok) {
-    throw new Error(`Geocoding failed with status ${response.status}`);
+    throw new Error(`Google geocoding failed with status ${response.status}`);
   }
 
-  const results = await response.json();
-  const match = Array.isArray(results) ? results[0] : null;
-  if (!match) {
-    throw new Error("No location match found for that installation and country.");
+  const payload = await response.json();
+  if (payload.status !== "OK" || !Array.isArray(payload.results) || !payload.results[0]) {
+    throw new Error(`Google geocoding status: ${payload.status || "UNKNOWN_ERROR"}`);
+  }
+
+  const location = payload.results[0]?.geometry?.location;
+  if (!location || !Number.isFinite(location.lat) || !Number.isFinite(location.lng)) {
+    throw new Error("Google geocoding did not return usable coordinates.");
   }
 
   const geocoded = {
-    latitude: Number(match.lat),
-    longitude: Number(match.lon),
+    latitude: Number(location.lat),
+    longitude: Number(location.lng),
   };
 
   cache[cacheKey] = geocoded;
@@ -390,12 +407,21 @@ form.addEventListener("submit", async (event) => {
   const formData = new FormData(form);
   const locationName = String(formData.get("locationName") ?? "").trim();
   const country = String(formData.get("country") ?? "").trim();
+  const apiKey = String(formData.get("googleApiKey") ?? "").trim();
+
+  if (!apiKey) {
+    window.alert("A Google Maps Geocoding API key is required to plot locations.");
+    googleApiKeyInput.focus();
+    return;
+  }
+
+  localStorage.setItem(GOOGLE_API_KEY_STORAGE, apiKey);
 
   submitButton.disabled = true;
   submitButton.textContent = "Plotting location...";
 
   try {
-    const geocoded = await geocodeLocation(locationName, country);
+    const geocoded = await geocodeLocation(locationName, country, apiKey);
     const report = normalizeReport({
       locationName,
       country,
@@ -411,6 +437,7 @@ form.addEventListener("submit", async (event) => {
     saveReports(reports);
     form.reset();
     servedOnInput.valueAsDate = new Date();
+    googleApiKeyInput.value = apiKey;
     renderDashboard();
   } catch (error) {
     window.alert(error instanceof Error ? error.message : "Location lookup failed.");

@@ -51,6 +51,11 @@
             </div>
 
             <label>
+              Google Maps API key
+              <input id="googleApiKey" name="googleApiKey" type="password" placeholder="Paste browser Geocoding API key" autocomplete="off" required />
+            </label>
+
+            <label>
               Date served
               <input id="servedOn" name="servedOn" type="date" required />
             </label>
@@ -74,7 +79,7 @@
               <textarea id="notes" name="notes" rows="3" maxlength="280" placeholder="Optional context about the meal service."></textarea>
             </label>
 
-            <p class="form-helper">The required installation and country are geocoded via an open API and plotted on the map automatically.</p>
+            <p class="form-helper">The required installation and country are geocoded through the Google Maps Geocoding API and plotted on the map automatically.</p>
 
             <div class="form-actions">
               <button type="submit">Add report</button>
